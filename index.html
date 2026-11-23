@@ -227,33 +227,48 @@ function renderSyn(){
  ${API?'<p><button id="ex" class="pri">Exporter en CSV (Excel)</button></p>':""}`;
 }
 
+
 function renderAdm(){
  const el=$("#adm");
  if(!isAdmin){el.innerHTML="";$("#imp").hidden=true;return}
  $("#imp").hidden=false;
- el.innerHTML=`<h2>Administration — tarifs et références</h2>
+ el.innerHTML=`<h2>Administration — tarifs, références et minimums de commande</h2>
  <div class="card">
  ${ART.map(a=>`<div class="row2" style="margin-bottom:8px">
  <label>${esc(a.n)}<input data-r="${a.id}" value="${esc(rf(a))}"></label>
  <label>Tarif (€)<input data-p="${a.id}" inputmode="decimal" placeholder="à venir" value="${pr(a)==null?"":pr(a)}"></label>
+ <label>Minimum de commandes<input data-m="${a.id}" type="number" min="0" step="1" placeholder="Aucun minimum" value="${Number(cfg[a.id]?.m)||""}"></label>
  </div>`).join("")}
- <button id="sp" class="pri">Enregistrer les tarifs</button>
+ <button id="sp" class="pri">Enregistrer les paramètres</button>
  <button id="logout" class="sec">Fermer la session organisateur</button>
  <span id="pm" class="mu"></span></div>`;
  $("#sp").onclick=async()=>{
   const c={};
   ART.forEach(a=>{
+   const old=cfg[a.id]||{};
    const r=el.querySelector(`[data-r="${a.id}"]`).value.trim();
    const v=el.querySelector(`[data-p="${a.id}"]`).value.replace(",",".").trim();
    const p=v===""?null:Number(v);
-   c[a.id]={r,p:Number.isFinite(p)?p:null};
+   const mv=el.querySelector(`[data-m="${a.id}"]`).value.trim();
+   const m=mv===""?0:Math.max(0,Math.floor(Number(mv)));
+   c[a.id]={
+    ...old,
+    r:r,
+    p:Number.isFinite(p)?p:null,
+    m:Number.isFinite(m)?m:0
+   };
   });
   try{
    const j=await postAPI({action:"saveConfig",adminKey:adminKey,config:c});
    if(!j.ok)throw new Error(j.error||"Refusé");
-   cfg=c;renderArts();renderSyn();
-   $("#pm").textContent="Tarifs et références enregistrés ✓";
-  }catch(e){$("#pm").textContent="Échec : "+(e.message||"réessayez")}
+   cfg=c;
+   renderArts();
+   renderSyn();
+   renderAdm();
+   $("#pm").textContent="Tarifs, références et minimums enregistrés ✓";
+  }catch(e){
+   $("#pm").textContent="Échec : "+(e.message||"réessayez");
+  }
  };
  $("#logout").onclick=()=>{
   adminKey="";isAdmin=false;renderAdm();
