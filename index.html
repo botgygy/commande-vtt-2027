@@ -111,9 +111,38 @@ function stat(){
 
 const sizeOf=a=>szOf(a,cur);
 const selOpts=v=>`<option value="">Taille…</option>`+SZ.map(z=>`<option${z===v?" selected":""}>${z}</option>`).join("");
+
 function renderArts(){
- $("#arts").innerHTML=ART.map(a=>{const n=cur.q[a.id]||0;return `<div class="art${n?" sel":""}"><div class="ai"><b>${a.n}</b><span class="mu">${esc(rf(a))} · ${ep(a)}</span><select data-sz="${a.id}" aria-label="Taille ${esc(a.n)}">${selOpts(sizeOf(a))}</select></div><div class="step"><button data-id="${a.id}" data-d="-1" aria-label="Moins">−</button><output>${n}</output><button data-id="${a.id}" data-d="1" aria-label="Plus">+</button></div><div class="lt">${n?(pr(a)==null?"—":eur(n*pr(a))):""}</div></div>`}).join("");
- const c=count(cur.q);$("#tot").textContent=eur(total(cur.q));const u=unp(cur.q).length;$("#cnt").textContent=`(${c} article${c>1?"s":""})`+(u?` · ${u} sans tarif`:"");
+ $("#arts").innerHTML=ART.map(a=>{
+  const n=cur.q[a.id]||0;
+  const minimum=Number(cfg[a.id]?.m)||0;
+  const commandeClub=Object.values(orders).reduce(
+   (s,o)=>s+(Number(o.q?.[a.id])||0),0
+  );
+  const suivi=minimum>0
+   ? `<span class="mu">Club : ${commandeClub} / ${minimum} pièces — ${commandeClub>=minimum?"Minimum atteint ✓":"Minimum non atteint"}</span>`
+   : "";
+
+  return `<div class="art${n?" sel":""}">
+   <div class="ai">
+    <b>${a.n}</b>
+    <span class="mu">${esc(rf(a))} · ${ep(a)}</span>
+    ${suivi}
+    <select data-sz="${a.id}" aria-label="Taille ${esc(a.n)}">${selOpts(sizeOf(a))}</select>
+   </div>
+   <div class="step">
+    <button data-id="${a.id}" data-d="-1" aria-label="Moins">−</button>
+    <output>${n}</output>
+    <button data-id="${a.id}" data-d="1" aria-label="Plus">+</button>
+   </div>
+   <div class="lt">${n?(pr(a)==null?"—":eur(n*pr(a))):""}</div>
+  </div>`;
+ }).join("");
+
+ const c=count(cur.q);
+ $("#tot").textContent=eur(total(cur.q));
+ const u=unp(cur.q).length;
+ $("#cnt").textContent=`(${c} article${c>1?"s":""})`+(u?` · ${u} sans tarif`:"");
 }
 function setWho(name,th,tb){
  cur.name=name;const o=orders[slug(name)];
