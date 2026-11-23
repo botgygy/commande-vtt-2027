@@ -232,30 +232,80 @@ function csv(){
  rows.push(["TOTAL",...ART.map(a=>L.reduce((s,o)=>s+(o.q[a.id]||0),0)),L.reduce((s,o)=>s+total(o.q),0).toFixed(2).replace(".",",")]);
  return "\ufeff"+rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(";")).join("\r\n");
 }
+
 function renderSyn(){
  const all=list(),L=all.filter(o=>count(o.q)>0);
  const nb=L.reduce((s,o)=>s+count(o.q),0),tot=L.reduce((s,o)=>s+total(o.q),0);
  const unk=ART.some(a=>L.some(o=>o.q[a.id]&&!szOf(a,o)));
  const cols=SZ.concat(unk?["?"]:[]);
  const sz=(a,o)=>szOf(a,o)||"?";
+
  const rows=ART.map(a=>{
   const qty=L.reduce((s,o)=>s+(o.q[a.id]||0),0);
-  const cells=cols.map(c=>{const n=L.reduce((s,o)=>s+(sz(a,o)===c?(o.q[a.id]||0):0),0);return `<td class="n${n?"":" z"}">${n||"·"}</td>`}).join("");
-  return `<tr><td>${a.n}</td><td class="n">${qty}</td><td class="n">${pr(a)==null?"—":eur(qty*pr(a))}</td>${cells}</tr>`}).join("");
+  const minimum=Number(cfg[a.id]?.m)||0;
+  const etat=minimum>0
+   ? (qty>=minimum?"Minimum atteint ✓":"Minimum non atteint")
+   : "Aucun minimum";
+
+  const cells=cols.map(c=>{
+   const n=L.reduce((s,o)=>s+(sz(a,o)===c?(o.q[a.id]||0):0),0);
+   return `<td class="n${n?"":" z"}">${n||"·"}</td>`;
+  }).join("");
+
+  return `<tr>
+   <td>${esc(a.n)}</td>
+   <td class="n">${qty}</td>
+   <td class="n">${minimum||"—"}</td>
+   <td>${etat}</td>
+   <td class="n">${pr(a)==null?"—":eur(qty*pr(a))}</td>
+   ${cells}
+  </tr>`;
+ }).join("");
+
  const done=new Set(all.map(o=>o.k)),miss=MEM.filter(m=>!done.has(slug(m[0])));
+
  $("#sy").innerHTML=`
- <div class="kpi"><div><b>${L.length}</b><span class="mu">adhérents commandeurs</span></div><div><b>${nb}</b><span class="mu">articles</span></div><div><b>${eur(tot)}</b><span class="mu">total commande</span></div></div>
- <h2>Par article et par taille</h2>${ART.some(a=>pr(a)==null&&L.some(o=>o.q[a.id]))?'<div class="note wa">Certains articles n’ont pas encore de tarif : ils ne sont pas inclus dans le total.</div>':""}
- <div class="sc"><table><thead><tr><th>Article</th><th class="n">Qté</th><th class="n">Montant</th>${cols.map(c=>`<th class="n">${c}</th>`).join("")}</tr></thead><tbody>${rows}</tbody>
- <tfoot><tr><td>Total</td><td class="n">${nb}</td><td class="n">${eur(tot)}</td><td colspan="${cols.length}"></td></tr></tfoot></table></div>
+ <div class="kpi">
+  <div><b>${L.length}</b><span class="mu">adhérents commandeurs</span></div>
+  <div><b>${nb}</b><span class="mu">articles</span></div>
+  <div><b>${eur(tot)}</b><span class="mu">total commande</span></div>
+ </div>
+
+ <h2>Par article et par taille</h2>
+ ${ART.some(a=>pr(a)==null&&L.some(o=>o.q[a.id]))?'<div class="note wa">Certains articles n’ont pas encore de tarif : ils ne sont pas inclus dans le total.</div>':""}
+
+ <div class="sc"><table>
+ <thead><tr>
+  <th>Article</th>
+  <th class="n">Qté</th>
+  <th class="n">Minimum</th>
+  <th>État</th>
+  <th class="n">Montant</th>
+  ${cols.map(c=>`<th class="n">${c}</th>`).join("")}
+ </tr></thead>
+ <tbody>${rows}</tbody>
+ <tfoot><tr>
+  <td>Total</td>
+  <td class="n">${nb}</td>
+  <td></td>
+  <td></td>
+  <td class="n">${eur(tot)}</td>
+  <td colspan="${cols.length}"></td>
+ </tr></tfoot>
+ </table></div>
+
  ${unk?'<div class="note wa">« ? » : taille manquante pour certains articles.</div>':""}
+
  <h2>Détail par adhérent</h2>
- <div class="sc"><table><thead><tr><th>Adhérent</th><th>Articles (taille)</th><th class="n">Total</th></tr></thead><tbody>${
-  L.map(o=>`<tr><td>${esc(o.name)}</td><td>${ART.filter(a=>o.q[a.id]).map(a=>`${esc(o.q[a.id])}× ${a.s} (${esc(szOf(a,o)||"?")})`).join(", ")}</td><td class="n">${eur(total(o.q))}</td></tr>`).join("")||'<tr><td colspan="3" class="z">Aucune commande pour le moment.</td></tr>'}</tbody></table></div>
+ <div class="sc"><table>
+ <thead><tr><th>Adhérent</th><th>Articles (taille)</th><th class="n">Total</th></tr></thead>
+ <tbody>${
+  L.map(o=>`<tr><td>${esc(o.name)}</td><td>${ART.filter(a=>o.q[a.id]).map(a=>`${esc(o.q[a.id])}× ${a.s} (${esc(szOf(a,o)||"?")})`).join(", ")}</td><td class="n">${eur(total(o.q))}</td></tr>`).join("")||'<tr><td colspan="3" class="z">Aucune commande pour le moment.</td></tr>'
+ }</tbody></table></div>
+
  <details><summary>Sans réponse (${miss.length})</summary><div class="mu">${miss.map(m=>esc(m[0])).join(", ")||"Tout le monde a répondu."}</div></details>
  ${API?'<p><button id="ex" class="pri">Exporter en CSV (Excel)</button></p>':""}`;
 }
-
 
 function renderAdm(){
  const el=$("#adm");
