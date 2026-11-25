@@ -22,6 +22,7 @@ select,input{width:100%;margin-top:4px;padding:10px;border:1px solid var(--bd);b
 .row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}.row2 label{margin:0}
 .art{display:grid;grid-template-columns:1fr auto 80px;gap:10px;align-items:center;padding:10px 8px;border-bottom:1px solid var(--bd);border-radius:8px}
 .art:last-child{border-bottom:0}.art.sel{background:var(--sel)}
+.choice{display:flex;align-items:center;gap:9px;margin:8px 0;color:var(--tx);font-size:14px}.choice input{width:auto;margin:0}
 .ai b{display:block}.ai span{display:block}.ai select{width:auto;margin:6px 0 0;padding:5px 8px}
 .step{display:flex;align-items:center;gap:8px}
 .step button{width:36px;height:36px;border-radius:50%;border:1px solid var(--bd);background:var(--card);color:var(--tx);font-size:20px;cursor:pointer}
@@ -57,6 +58,11 @@ details{margin-top:10px;font-size:13px}
  <div class="card">
   <label>Adhérent<select id="who"></select></label>
   <label id="nl" hidden>Nom et prénom<input id="nm" placeholder="NOM Prénom" autocomplete="name"></label>
+  <div style="margin-top:12px"><div style="font-weight:600;font-size:14px">Votre réponse</div>
+   <label class="choice"><input type="radio" name="orderStatus" value="order"> Je souhaite passer une commande</label>
+   <label class="choice"><input type="radio" name="orderStatus" value="none"> Je ne commande rien cette fois-ci</label>
+   <div id="statusHelp" class="mu">Choisissez une réponse pour pouvoir enregistrer.</div>
+  </div>
   <div class="row2"><label>Taille haut suggérée<select id="th"></select></label><label>Taille bas suggérée<select id="tb"></select></label></div>
   <div class="mu" style="margin-top:8px">Ces tailles servent de suggestion. Vous pouvez les changer pour chaque article ci-dessous.</div>
  </div>
@@ -98,7 +104,13 @@ const unp=q=>ART.filter(a=>(q||{})[a.id]&&pr(a)==null);
 const ep=a=>pr(a)==null?"tarif à venir":eur(pr(a));
 const szOf=(a,o)=>(o.sz&&o.sz[a.id])||(a.g==="h"?o.th:o.tb)||"";
 const count=q=>ART.reduce((s,a)=>s+((q||{})[a.id]||0),0);
-let orders={},cur={name:"",th:"",tb:"",q:{}};
+let orders={},cur={name:"",th:"",tb:"",q:{},sz:{},status:"pending"};
+const statusOf=o=>o.status||(count(o.q)>0?"order":"pending");
+function renderChoice(){
+ document.querySelectorAll('input[name="orderStatus"]').forEach(r=>r.checked=r.value===cur.status);
+ $("#arts").hidden=cur.status!=="order";
+ $("#statusHelp").textContent=cur.status==="order"?"Ajoutez vos articles et leurs tailles.":cur.status==="none"?"Votre réponse sera enregistrée sans article.":"Choisissez une réponse pour pouvoir enregistrer.";
+}
 
 function msg(t,c){const m=$("#msg");m.textContent=t;m.className="note "+(c||"")}
 function stat(){
@@ -146,37 +158,54 @@ function renderArts(){
 }
 function setWho(name,th,tb){
  cur.name=name;const o=orders[slug(name)];
- if(o){cur.th=o.th||"";cur.tb=o.tb||"";cur.q=Object.assign({},o.q);cur.sz=Object.assign({},o.sz)}else{cur.th=th||"";cur.tb=tb||"";cur.q={};cur.sz={}}
- $("#th").value=cur.th;$("#tb").value=cur.tb;renderArts();
+ if(o){
+  cur.th=o.th||"";cur.tb=o.tb||"";
+  cur.q=Object.assign({},o.q);cur.sz=Object.assign({},o.sz);
+  cur.status=statusOf(o);
+ }else{
+  cur.th=th||"";cur.tb=tb||"";cur.q={};cur.sz={};cur.status="pending";
+ }
+ $("#th").value=cur.th;$("#tb").value=cur.tb;
+ renderChoice();renderArts();
 }
 function pick(v){
  $("#nl").hidden=v!=="__new";
  try{localStorage.setItem("gobik-who",v)}catch(e){}
- if(v===""||v==="__new"){cur={name:"",th:"",tb:"",q:{}};$("#th").value="";$("#tb").value="";$("#nm").value="";renderArts();return}
+ if(v===""||v==="__new"){
+  cur={name:"",th:"",tb:"",q:{},sz:{},status:"pending"};
+  $("#th").value="";$("#tb").value="";$("#nm").value="";
+  renderChoice();renderArts();return;
+ }
  setWho(...MEM[+v]);
 }
 function recap(){
  const L=ART.filter(a=>cur.q[a.id]).map(a=>`- ${cur.q[a.id]} × ${a.n}, taille ${sizeOf(a)||"?"} (${ep(a)})`);
- return `Commande Gobik 2027 — ${cur.name}\n${L.join("\n")||"- (aucun article)"}\nTotal : ${eur(total(cur.q))}\n\nCode à conserver tel quel : ${mkCode()}`;
+ const reponse=cur.status==="none"?"Je ne commande rien cette fois-ci.":L.join("\\n")||"- (aucun article)";
+ return `Commande Gobik 2027 — ${cur.name}\\n${reponse}\\nTotal : ${eur(total(cur.q))}\\n\\nCode à conserver tel quel : ${mkCode()}`;
 }
 async function save(){
  if(!cur.name.trim()){msg("Indiquez votre nom.","wa");return}
- if(ART.some(a=>cur.q[a.id]&&!sizeOf(a))){msg("Choisissez une taille pour chaque article sélectionné.","wa");return}
- const q={};ART.forEach(a=>{if(cur.q[a.id])q[a.id]=cur.q[a.id]});
- const z={};ART.forEach(a=>{if(q[a.id])z[a.id]=sizeOf(a)});
- const o={name:cur.name.trim(),q:q,sz:z};
+ if(cur.status!=="order"&&cur.status!=="none"){msg("Choisissez l'une des deux réponses avant d'enregistrer.","wa");return}
+ if(cur.status==="order"&&!count(cur.q)){msg("Ajoutez au moins un article ou choisissez « Je ne commande rien ».","wa");return}
+ if(cur.status==="order"&&ART.some(a=>cur.q[a.id]&&!sizeOf(a))){msg("Choisissez une taille pour chaque article sélectionné.","wa");return}
+ const q={},z={};
+ if(cur.status==="order"){
+  ART.forEach(a=>{if(cur.q[a.id])q[a.id]=cur.q[a.id]});
+  ART.forEach(a=>{if(q[a.id])z[a.id]=sizeOf(a)});
+ }
+ const o={name:cur.name.trim(),q:q,sz:z,status:cur.status};
  try{
   if(!API)throw new Error("API Google Sheets non configurée.");
-  const j=await postAPI({action:"order",n:o.name,q:q,z:z});
+  const j=await postAPI({action:"order",n:o.name,q:q,z:z,status:o.status});
   if(!j.ok)throw new Error(j.error||"refusé");
-  orders[slug(o.name)]={name:o.name,th:"",tb:"",q:q,sz:z};
+  orders[slug(o.name)]={name:o.name,th:"",tb:"",q:q,sz:z,status:o.status};
+  if(o.status==="none"){cur.q={};cur.sz={};renderArts()}
   renderSyn();
-  msg("Commande enregistrée ✓ Pour la modifier, utilisez le même nom et enregistrez à nouveau.","ok");
+  msg(o.status==="none"?"Réponse enregistrée : vous ne commandez rien cette fois-ci ✓":"Commande enregistrée ✓ Pour la modifier, utilisez le même nom et enregistrez à nouveau.","ok");
  }catch(e){
   msg("Échec de l’enregistrement : "+((e&&e.message)||"réessayez")+". Utilisez « Copier le récap ».","wa");
  }
 }
-
 const ORG="";
 const API="https://script.google.com/macros/s/AKfycbzbFws1HvTSLJuXgSrlc8eZXINXP0D5VSeeV5TLgNhCcYJguD7Eo079mBG0Vsy4a8_j/exec";
 let adminKey="";
@@ -200,7 +229,7 @@ async function loadRemote(){
   orders={};
   (j.orders||[]).forEach(o=>{
    orders[slug(o.n)]={
-    name:o.n,th:"",tb:"",q:o.q||{},sz:o.z||{}
+    name:o.n,th:"",tb:"",q:o.q||{},sz:o.z||{},status:o.status||(Object.keys(o.q||{}).length?"order":"pending")
    };
   });
   cfg=j.config||{};
@@ -214,7 +243,7 @@ async function loadRemote(){
   $("#st").className="note wa";
  }
 }
-function mkCode(){const q={},z={};ART.forEach(a=>{if(cur.q[a.id]){q[a.id]=cur.q[a.id];z[a.id]=sizeOf(a)}});return "GOBIK1:"+btoa(unescape(encodeURIComponent(JSON.stringify({n:cur.name.trim(),q,z}))))}
+function mkCode(){const q={},z={};ART.forEach(a=>{if(cur.q[a.id]){q[a.id]=cur.q[a.id];z[a.id]=sizeOf(a)}});return "GOBIK1:"+btoa(unescape(encodeURIComponent(JSON.stringify({n:cur.name.trim(),q,z,status:cur.status}))))}
 async function mail(){
  if(!cur.name.trim()){msg("Indiquez votre nom.","wa");return}
  location.href="mailto:"+ORG+"?subject="+encodeURIComponent("Commande vêtements club VTT 2027 — "+cur.name.trim())+"&body="+encodeURIComponent(recap());
@@ -234,7 +263,13 @@ function csv(){
 }
 
 function renderSyn(){
- const all=list(),L=all.filter(o=>count(o.q)>0);
+ const all=list();
+ const L=all.filter(o=>statusOf(o)==="order"&&count(o.q)>0);
+ const noOrder=all.filter(o=>statusOf(o)==="none");
+ const pending=MEM.filter(m=>{
+  const o=orders[slug(m[0])];
+  return !o||statusOf(o)==="pending";
+ });
  const nb=L.reduce((s,o)=>s+count(o.q),0),tot=L.reduce((s,o)=>s+total(o.q),0);
  const unk=ART.some(a=>L.some(o=>o.q[a.id]&&!szOf(a,o)));
  const cols=SZ.concat(unk?["?"]:[]);
@@ -246,23 +281,16 @@ function renderSyn(){
   const etat=minimum>0
    ? (qty>=minimum?"Minimum atteint ✓":"Minimum non atteint")
    : "Aucun minimum";
-
   const cells=cols.map(c=>{
    const n=L.reduce((s,o)=>s+(sz(a,o)===c?(o.q[a.id]||0):0),0);
    return `<td class="n${n?"":" z"}">${n||"·"}</td>`;
   }).join("");
-
   return `<tr>
-   <td>${esc(a.n)}</td>
-   <td class="n">${qty}</td>
-   <td class="n">${minimum||"—"}</td>
-   <td>${etat}</td>
-   <td class="n">${pr(a)==null?"—":eur(qty*pr(a))}</td>
-   ${cells}
+   <td>${esc(a.n)}</td><td class="n">${qty}</td>
+   <td class="n">${minimum||"—"}</td><td>${etat}</td>
+   <td class="n">${pr(a)==null?"—":eur(qty*pr(a))}</td>${cells}
   </tr>`;
  }).join("");
-
- const done=new Set(all.map(o=>o.k)),miss=MEM.filter(m=>!done.has(slug(m[0])));
 
  $("#sy").innerHTML=`
  <div class="kpi">
@@ -271,29 +299,18 @@ function renderSyn(){
   <div><b>${eur(tot)}</b><span class="mu">total commande</span></div>
  </div>
 
+ <h2>Suivi des réponses</h2>
+ <details open><summary>Commandes enregistrées (${L.length})</summary><div class="mu">${L.map(o=>esc(o.name)).join(", ")||"Aucune commande enregistrée."}</div></details>
+ <details><summary>Ne commande rien (${noOrder.length})</summary><div class="mu">${noOrder.map(o=>esc(o.name)).join(", ")||"Personne pour le moment."}</div></details>
+ <details><summary>Sans réponse (${pending.length})</summary><div class="mu">${pending.map(m=>esc(m[0])).join(", ")||"Tout le monde a répondu."}</div></details>
+
  <h2>Par article et par taille</h2>
  ${ART.some(a=>pr(a)==null&&L.some(o=>o.q[a.id]))?'<div class="note wa">Certains articles n’ont pas encore de tarif : ils ne sont pas inclus dans le total.</div>':""}
-
  <div class="sc"><table>
- <thead><tr>
-  <th>Article</th>
-  <th class="n">Qté</th>
-  <th class="n">Minimum</th>
-  <th>État</th>
-  <th class="n">Montant</th>
-  ${cols.map(c=>`<th class="n">${c}</th>`).join("")}
- </tr></thead>
+ <thead><tr><th>Article</th><th class="n">Qté</th><th class="n">Minimum</th><th>État</th><th class="n">Montant</th>${cols.map(c=>`<th class="n">${c}</th>`).join("")}</tr></thead>
  <tbody>${rows}</tbody>
- <tfoot><tr>
-  <td>Total</td>
-  <td class="n">${nb}</td>
-  <td></td>
-  <td></td>
-  <td class="n">${eur(tot)}</td>
-  <td colspan="${cols.length}"></td>
- </tr></tfoot>
+ <tfoot><tr><td>Total</td><td class="n">${nb}</td><td></td><td></td><td class="n">${eur(tot)}</td><td colspan="${cols.length}"></td></tr></tfoot>
  </table></div>
-
  ${unk?'<div class="note wa">« ? » : taille manquante pour certains articles.</div>':""}
 
  <h2>Détail par adhérent</h2>
@@ -302,11 +319,8 @@ function renderSyn(){
  <tbody>${
   L.map(o=>`<tr><td>${esc(o.name)}</td><td>${ART.filter(a=>o.q[a.id]).map(a=>`${esc(o.q[a.id])}× ${a.s} (${esc(szOf(a,o)||"?")})`).join(", ")}</td><td class="n">${eur(total(o.q))}</td></tr>`).join("")||'<tr><td colspan="3" class="z">Aucune commande pour le moment.</td></tr>'
  }</tbody></table></div>
-
- <details><summary>Sans réponse (${miss.length})</summary><div class="mu">${miss.map(m=>esc(m[0])).join(", ")||"Tout le monde a répondu."}</div></details>
  ${API?'<p><button id="ex" class="pri">Exporter en CSV (Excel)</button></p>':""}`;
 }
-
 function renderAdm(){
  const el=$("#adm");
  if(!isAdmin){el.innerHTML="";$("#imp").hidden=true;return}
@@ -357,6 +371,7 @@ function renderAdm(){
  $("#who").innerHTML='<option value="">— Choisir mon nom —</option>'+MEM.map((m,i)=>`<option value="${i}">${esc(m[0])}</option>`).join("")+'<option value="__new">Je ne suis pas dans la liste</option>';
  [["#th","Haut"],["#tb","Bas"]].forEach(([s,p])=>$(s).innerHTML=`<option value="">${p}…</option>`+SZ.map(z=>`<option>${z}</option>`).join(""));
  $("#who").onchange=e=>pick(e.target.value);
+  document.querySelectorAll('input[name="orderStatus"]').forEach(r=>r.onchange=()=>{cur.status=r.value;renderChoice();});
  $("#nm").oninput=e=>{cur.name=e.target.value};
  $("#th").onchange=e=>{cur.th=e.target.value;renderArts()};
  $("#tb").onchange=e=>{cur.tb=e.target.value;renderArts()};
@@ -385,7 +400,7 @@ function renderAdm(){
      const v=Math.floor(+(d.q||{})[a.id]);
      if(v>0){q[a.id]=Math.min(v,20);const sz=(d.z||{})[a.id];z[a.id]=SZ.includes(sz)?sz:""}
     });
-    ordersToImport.push({n:name,q:q,z:z});n++;
+    ordersToImport.push({n:name,q:q,z:z,status:d.status||(Object.keys(q).length?"order":"pending")});n++;
    }catch(e){bad++}
   }
   try{
@@ -421,7 +436,7 @@ function renderAdm(){
    alert("Accès organisateur activé.");
   }catch(e){alert("Accès refusé : "+(e.message||"erreur"))}
  };
- renderArts();renderSyn();stat();
+ renderChoice();renderArts();renderSyn();stat();
  if(API){$("#ml").hidden=true;loadRemote()}
  try{
   const v=localStorage.getItem("gobik-who");
